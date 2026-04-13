@@ -20,14 +20,14 @@ loss:
 
 train:
   epochs: 300
-  batch_size: 32
+  batch_size: 64           # 16 per GPU × 4 GPUs; AMP keeps ViT activations in fp16
   grad_accum_steps: 1
   optimizer: adamw
-  lr: 5.0e-4
+  lr: 8.0e-4               # sqrt-scaled from 5e-4: 5e-4 × √(64/32) ≈ 7e-4 → 8e-4
   weight_decay: 0.01
   beta1: 0.9
   beta2: 0.999
-  warmup_epochs: 10
+  warmup_epochs: 8         # scaled from 10 with larger batch
   clip_grad_norm: 1.0
 
 data:

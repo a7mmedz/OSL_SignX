@@ -43,14 +43,14 @@ loss:
   label_smoothing: 0.1
 
 train:
-  epochs: 200
-  batch_size: 8           # sentence-level can be memory heavy
-  grad_accum_steps: 4
+  epochs: 100              # 132 sentences overfit quickly; was 200
+  batch_size: 16           # 4 per GPU × 4 GPUs; sentence videos are long
+  grad_accum_steps: 2      # effective batch = 32 (unchanged) — 2× faster per epoch
   optimizer: adamw
   scheduler: noam
-  noam_warmup: 4000
+  noam_warmup: 2000        # halved — fewer training samples, fewer steps total
   noam_model_size: 256
-  lr: 1.0e-3
+  lr: 1.0e-3               # effective batch unchanged → lr unchanged
   weight_decay: 0.01
   clip_grad_norm: 5.0
 

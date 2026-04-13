@@ -25,14 +25,14 @@ loss:
 
 train:
   epochs: 800
-  batch_size: 32
-  grad_accum_steps: 4
+  batch_size: 128          # 32 per GPU × 4 GPUs; effective batch = 128 (unchanged)
+  grad_accum_steps: 1      # was 4 — accum no longer needed, 4× faster per step
   optimizer: adamw
-  lr: 1.0e-3
+  lr: 1.0e-3               # effective batch unchanged → lr unchanged
   weight_decay: 0.01
   beta1: 0.9
   beta2: 0.999
-  warmup_epochs: 20
+  warmup_epochs: 10        # halved — larger per-step batch warms up faster
   clip_grad_norm: 1.0
 
 data:

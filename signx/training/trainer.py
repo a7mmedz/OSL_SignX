@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, Optional
 
 import torch
 import torch.nn as nn
+from torch.cuda.amp import GradScaler, autocast
 from torch.utils.data import DataLoader
 
 from ..utils.checkpoint import TopKCheckpointTracker, save_checkpoint
@@ -77,6 +78,12 @@ class BaseTrainer:
         )
         self.wandb = WandbLogger(cfg, run_name=cfg.name)
 
+        # Automatic Mixed Precision (fp16) — enabled via cfg.use_amp
+        self.use_amp = bool(getattr(cfg, "use_amp", False)) and self.device.type == "cuda"
+        self.scaler = GradScaler() if self.use_amp else None
+        if self.use_amp:
+            logger.info("AMP (fp16) enabled — using GradScaler")
+
         # In-memory history for matplotlib curves (key -> list of floats)
         self._train_history: dict[str, list[float]] = {}
         self._val_history: dict[str, list[float]] = {}
@@ -123,14 +130,27 @@ class BaseTrainer:
             self.optimizer.zero_grad()
             for step, batch in enumerate(self.train_loader):
                 batch = self._to_device(batch)
-                loss_dict = self.compute_loss(batch)
+
+                with autocast(enabled=self.use_amp):
+                    loss_dict = self.compute_loss(batch)
+
                 loss = loss_dict["loss"] / accum
-                loss.backward()
+                if self.scaler is not None:
+                    self.scaler.scale(loss).backward()
+                else:
+                    loss.backward()
 
                 if (step + 1) % accum == 0:
-                    if clip > 0:
-                        torch.nn.utils.clip_grad_norm_(self.model.parameters(), clip)
-                    self.optimizer.step()
+                    if self.scaler is not None:
+                        if clip > 0:
+                            self.scaler.unscale_(self.optimizer)
+                            torch.nn.utils.clip_grad_norm_(self.model.parameters(), clip)
+                        self.scaler.step(self.optimizer)
+                        self.scaler.update()
+                    else:
+                        if clip > 0:
+                            torch.nn.utils.clip_grad_norm_(self.model.parameters(), clip)
+                        self.optimizer.step()
                     if self.scheduler is not None:
                         self.scheduler.step()
                     self.optimizer.zero_grad()

@@ -122,14 +122,17 @@ def main():
     val_ds = build_dataset(cfg, vocab, split="dev",
                            transform=build_video_transform(cfg, train=False))
 
+    nw = int(cfg.num_workers)
     train_loader = DataLoader(
         train_ds, batch_size=int(cfg.train.batch_size), shuffle=cfg.data.shuffle,
-        num_workers=int(cfg.num_workers), pin_memory=bool(cfg.pin_memory),
+        num_workers=nw, pin_memory=bool(cfg.pin_memory),
+        persistent_workers=(nw > 0),
         collate_fn=collate_video_batch,
     )
     val_loader = DataLoader(
         val_ds, batch_size=int(cfg.train.batch_size), shuffle=False,
-        num_workers=int(cfg.num_workers), pin_memory=bool(cfg.pin_memory),
+        num_workers=nw, pin_memory=bool(cfg.pin_memory),
+        persistent_workers=(nw > 0),
         collate_fn=collate_video_batch,
     )
 
