@@ -1,0 +1,54 @@
+# Default configuration shared across all stages.
+defaults:
+  - paths
+
+# Reproducibility
+seed: 42
+
+# Hardware
+# device is forced to cuda; will raise at runtime if no GPU is present.
+# Set to "cpu" only for debugging without a GPU.
+device: cuda
+num_workers: 4
+pin_memory: true          # faster host→GPU transfer
+multi_gpu: false          # set true to wrap model in nn.DataParallel
+
+# Video preprocessing
+video:
+  image_size: 224
+  fps: 30
+  max_frames: 256         # safety cap for long sentence videos
+  mean: [0.485, 0.456, 0.406]
+  std: [0.229, 0.224, 0.225]
+
+# Vocabulary
+vocab:
+  blank_id: 0             # CTC blank maps to gloss 0000
+  vocab_size: 802         # 801 glosses + blank
+
+# Pose extraction backend
+# Options: "mediapipe" (default, lightweight single modality),
+#          "full5" (SMPLer-X + DWPose + MediaPipe + PrimeDepth + Sapiens),
+#          "precomputed" (load from .pkl)
+pose:
+  backend: mediapipe
+  # per-modality dims. MediaPipe only -> 258
+  mediapipe_dim: 258
+  full_dim: 1959
+  latent_dim: 2048
+  precomputed_dir: null
+
+# Logging
+logging:
+  wandb_enabled: false
+  wandb_project: osl-signx
+  wandb_entity: null
+  log_interval: 50
+  eval_interval: 1        # epochs
+
+# Checkpointing
+checkpoint:
+  save_top_k: 5           # checkpoint averaging across best-K
+  metric: wer
+  mode: min               # lower WER is better
+  save_interval: 1        # epochs

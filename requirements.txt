@@ -1,0 +1,30 @@
+# Core — install the CUDA build manually:
+#   uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+# (replace cu121 with your CUDA version, e.g. cu118, cu124)
+# The CPU build is listed here only as a fallback for CI / no-GPU environments.
+torch>=2.0.0
+torchvision>=0.15.0
+numpy>=1.24.0
+scipy>=1.10.0
+
+# Video I/O
+decord>=0.6.0
+opencv-python>=4.8.0
+Pillow>=10.0.0
+
+# Pose extraction (lightweight default)
+mediapipe>=0.10.0
+
+# Config & logging
+PyYAML>=6.0
+omegaconf>=2.3.0
+tqdm>=4.65.0
+wandb>=0.16.0
+
+# Metrics
+editdistance>=0.6.2
+sacrebleu>=2.3.0
+
+# Utilities
+einops>=0.7.0
+timm>=0.9.0

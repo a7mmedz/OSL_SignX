@@ -1,0 +1,40 @@
+# Stage 1: Pose2Gloss training config.
+# Trains the multi-head attention pose fusion + CodeBook decoder on pose features.
+defaults:
+  - default
+
+stage: 1
+name: stage1_pose2gloss
+
+model:
+  pose_input_dim: 258     # set to 1959 for full 5-modality
+  latent_dim: 2048
+  num_fusion_heads: 8
+  num_fusion_layers: 4
+  codebook_size: 4096
+  codebook_dim: 512
+  decoder_layers: 6
+  dropout: 0.1
+
+loss:
+  lambda_text: 1.0
+  lambda_word: 1.0
+  lambda_contrast: 1.0
+  label_smoothing: 0.1
+  contrastive_temperature: 0.07
+
+train:
+  epochs: 800
+  batch_size: 32
+  grad_accum_steps: 4
+  optimizer: adamw
+  lr: 1.0e-3
+  weight_decay: 0.01
+  beta1: 0.9
+  beta2: 0.999
+  warmup_epochs: 20
+  clip_grad_norm: 1.0
+
+data:
+  level: word             # word-level training for stage 1
+  shuffle: true

@@ -1,0 +1,14 @@
+# Sentence gloss annotations for OSL-SignX.
+#
+# Format (one sentence per line):
+#   {SentenceID} {WordID_1} {WordID_2} ... {WordID_N}
+#
+# Example:
+#   0001 0042 0007 0115 0003
+#
+# This file is a PLACEHOLDER. You must fill it manually by:
+#   1. Watching each sentence video in dataset/OSL-Sentences/rgb_format/
+#   2. Writing the ordered sequence of WordIDs that appear in the sentence.
+#   3. Use the WordIDs from data/Words.txt (four-digit zero-padded integers).
+#
+# Once populated, set data.level = sentence in configs/stage3_cslr.yaml.

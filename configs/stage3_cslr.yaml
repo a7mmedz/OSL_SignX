@@ -1,0 +1,64 @@
+# Stage 3: Continuous Sign Language Recognition in latent space.
+defaults:
+  - default
+
+stage: 3
+name: stage3_cslr
+
+model:
+  latent_dim: 2048
+  pruned_dim: 1024        # after adaptive feature pruning (Fisher info)
+  resnet_name: resnet34
+  tconv_channels: [1024, 1024]
+  tconv_kernels: [5, 5]
+  tconv_strides: [1, 2]
+  lstm_hidden: 512
+  lstm_layers: 2
+  lstm_bidirectional: true
+  transformer_layers: 6
+  transformer_dim: 256
+  transformer_heads: 8
+  transformer_ffn: 1024
+  dropout_attn: 0.3
+  dropout_relu: 0.5
+  dropout_res: 0.4
+  stage2_checkpoint: outputs/checkpoints/stage2/best.pt
+
+feature_processing:
+  layer_norm: true
+  whitening: true         # cross-frame covariance whitening
+  frame_dropout: 0.1      # stochastic frame dropping prob
+  pruning_enabled: true
+  aug_temporal_scales: [0.8, 0.9, 1.0, 1.1, 1.2]
+  aug_spatial_jitter: 0.02
+  aug_noise_std: 0.01
+  aug_folds: 10
+
+loss:
+  lambda_ctc: 1.0
+  lambda_ce: 1.0
+  lambda_kd: 0.5
+  lambda_latent_reg: 0.1
+  kd_temperature: 4.0
+  label_smoothing: 0.1
+
+train:
+  epochs: 200
+  batch_size: 8           # sentence-level can be memory heavy
+  grad_accum_steps: 4
+  optimizer: adamw
+  scheduler: noam
+  noam_warmup: 4000
+  noam_model_size: 256
+  lr: 1.0e-3
+  weight_decay: 0.01
+  clip_grad_norm: 5.0
+
+decode:
+  beam_size: 8
+  length_penalty: 1.0
+  max_len: 128
+
+data:
+  level: sentence         # continuous recognition on sentences
+  shuffle: true
