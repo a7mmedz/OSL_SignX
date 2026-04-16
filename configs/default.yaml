@@ -32,10 +32,14 @@ vocab:
 #          "full5" (SMPLer-X + DWPose + MediaPipe + PrimeDepth + Sapiens),
 #          "precomputed" (load from .pkl)
 pose:
+  # backend options:
+  #   "mediapipe"    — fast, single modality, 258-dim (default)
+  #   "full5"        — all 5 modalities concatenated, 1959-dim (matches paper)
+  #                    requires: mediapipe + mmpose + smpler_x + depth_pro + transformers
+  #   "precomputed"  — load pre-extracted .pt files (fastest for training)
   backend: mediapipe
-  # per-modality dims. MediaPipe only -> 258
   mediapipe_dim: 258
-  full_dim: 1959
+  full_dim: 1959            # MediaPipe(258)+DWPose(399)+SMPLerX(432)+PrimeDepth(480)+Sapiens(390)
   latent_dim: 512           # reduced from 2048 — right-sized for this dataset
   precomputed_dir: null
 

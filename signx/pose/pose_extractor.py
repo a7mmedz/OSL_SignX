@@ -68,13 +68,8 @@ def build_pose_extractor(cfg) -> PoseExtractor:
             return ZeroPoseExtractor(output_dim=int(pose_cfg.mediapipe_dim))
 
     if backend == "full5":
-        # Placeholder: full 5-modality extraction needs SMPLer-X, DWPose,
-        # PrimeDepth, Sapiens — none of which are pip-installable today.
-        # We expose the interface so the rest of the pipeline stays consistent.
-        raise NotImplementedError(
-            "full5 backend requires SMPLer-X, DWPose, MediaPipe, PrimeDepth and "
-            "Sapiens to be installed manually. See README for setup instructions."
-        )
+        from .full5_extractor import Full5Extractor
+        return Full5Extractor()
 
     if backend == "precomputed":
         if pose_cfg.precomputed_dir is None:
