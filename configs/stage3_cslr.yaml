@@ -6,23 +6,23 @@ stage: 3
 name: stage3_cslr
 
 model:
-  latent_dim: 2048
-  pruned_dim: 1024        # after adaptive feature pruning (Fisher info)
+  latent_dim: 512         # must match stage1/stage2 latent_dim
+  pruned_dim: 256         # reduced from 1024 (half of latent_dim)
   resnet_name: resnet34
-  tconv_channels: [1024, 1024]
+  tconv_channels: [512, 512]   # reduced from [1024, 1024]
   tconv_kernels: [5, 5]
   tconv_strides: [1, 2]
-  lstm_hidden: 512
+  lstm_hidden: 256        # reduced from 512
   lstm_layers: 2
   lstm_bidirectional: true
-  transformer_layers: 6
+  transformer_layers: 4   # reduced from 6
   transformer_dim: 256
   transformer_heads: 8
-  transformer_ffn: 1024
+  transformer_ffn: 512    # reduced from 1024
   dropout_attn: 0.3
   dropout_relu: 0.5
   dropout_res: 0.4
-  stage2_checkpoint: outputs/checkpoints/stage2/best.pt
+  stage2_checkpoint: outputs/checkpoints/stage2_video2pose/best.pt
 
 feature_processing:
   layer_norm: true

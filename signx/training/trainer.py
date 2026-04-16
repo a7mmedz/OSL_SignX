@@ -58,9 +58,12 @@ class BaseTrainer:
         torch.manual_seed(seed)
 
         self.model = model.to(self.device)
-        if getattr(cfg, "multi_gpu", False) and torch.cuda.device_count() > 1:
-            logger.info(f"Using {torch.cuda.device_count()} GPUs with DataParallel")
-            self.model = nn.DataParallel(self.model)
+        n_gpus = torch.cuda.device_count() if self.device.type == "cuda" else 0
+        if getattr(cfg, "multi_gpu", False) and n_gpus > 1:
+            logger.info(f"Using {n_gpus} GPUs with DataParallel")
+            self.model = nn.DataParallel(self.model, device_ids=list(range(n_gpus)))
+        elif n_gpus == 1:
+            logger.info("Single GPU mode (multi_gpu=false or only 1 GPU visible)")
         self.train_loader = train_loader
         self.val_loader = val_loader
 

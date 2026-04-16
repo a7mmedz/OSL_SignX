@@ -7,13 +7,13 @@ stage: 1
 name: stage1_pose2gloss
 
 model:
-  pose_input_dim: 258     # set to 1959 for full 5-modality
-  latent_dim: 2048
+  pose_input_dim: 258     # MediaPipe-only; set to 1959 for full 5-modality
+  latent_dim: 512         # reduced from 2048 — 16× less memory, better for small data
   num_fusion_heads: 8
-  num_fusion_layers: 4
-  codebook_size: 4096
-  codebook_dim: 512
-  decoder_layers: 6
+  num_fusion_layers: 2    # reduced from 4 — dataset too small to benefit from depth
+  codebook_size: 1024     # reduced from 4096
+  codebook_dim: 256       # reduced from 512
+  decoder_layers: 4       # reduced from 6
   dropout: 0.1
 
 loss:

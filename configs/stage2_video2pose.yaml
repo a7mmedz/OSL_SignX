@@ -10,10 +10,10 @@ model:
   vit_name: vit_base_patch16_224
   vit_pretrained: true
   vit_feature_dim: 768
-  latent_dim: 2048
+  latent_dim: 512         # must match stage1 latent_dim
   temporal_pool: mean     # how to aggregate frame features before projection
   freeze_stage1: true
-  stage1_checkpoint: outputs/checkpoints/stage1/best.pt
+  stage1_checkpoint: outputs/checkpoints/stage1_pose2gloss/best.pt
 
 loss:
   loss_type: mse          # MSE between predicted and ground-truth pose latent

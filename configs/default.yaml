@@ -36,7 +36,7 @@ pose:
   # per-modality dims. MediaPipe only -> 258
   mediapipe_dim: 258
   full_dim: 1959
-  latent_dim: 2048
+  latent_dim: 512           # reduced from 2048 — right-sized for this dataset
   precomputed_dir: null
 
 # Logging
