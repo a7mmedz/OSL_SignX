@@ -22,8 +22,8 @@ htmlcov/
 .tox/
 
 # Jupyter
-.ipynb_checkpoints/
-*.ipynb
+#.ipynb_checkpoints/
+# *.ipynb
 
 # OS / editor
 .DS_Store
