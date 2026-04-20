@@ -66,126 +66,295 @@ An implementation of the **SignX** architecture ([arXiv:2504.16315v3](https://ar
 
 ---
 
-## Dataset
+## Dataset Layout on the Server
 
 | Property | Value |
 |---|---|
 | Language | Omani Sign Language (Arabic glosses) |
-| Word-level videos | `final_split/{train,dev,test}/rgb/*.mp4` |
-| Sentence-level videos | `dataset/OSL-Sentences/rgb_format/*.mp4` |
+| Root directory | `FYPproject/` |
+| Word-level videos | `FYPproject/final_split/{train,dev,test}/rgb/*.mp4` |
+| Sentence-level videos | `FYPproject/OSL-Sentences/OSL-Sentences/rgb_format/*.mp4` |
 | Vocabulary | 801 sign glosses + 1 CTC blank = **802 tokens** |
 | Filename format | `{ID}_{SYY}_{TZZ}.mp4` (ID=WordID, SYY=SignerID, TZZ=TakeID) |
 
-The `final_split/` directory uses a signer-aware split to prevent data leakage.
-
----
-
-## Dataset Path Configuration
-
-The dataset root is set in `configs/paths.yaml` and **can be overridden without editing any file** via an environment variable:
-
-```bash
-export DATASET_ROOT=/path/to/your/dataset
-```
-
-### Path layout expected inside `DATASET_ROOT`
+Expected tree under `FYPproject/`:
 
 ```
-$DATASET_ROOT/
+FYPproject/
 ├── final_split/
 │   ├── train/rgb/*.mp4
 │   ├── dev/rgb/*.mp4
 │   └── test/rgb/*.mp4
-└── dataset/
+└── OSL-Sentences/
     └── OSL-Sentences/
         └── rgb_format/*.mp4
 ```
 
-The default (local WSL) path is:
+---
+
+## Quick-Start: Full Training from Scratch
+
+> All commands run in a Linux terminal. Every `$` is a shell prompt — do **not** type the `$`.
+
 ```
-/mnt/c/Users/Admin/Desktop/SQU/Spring_26/FYP/Models/Dataset
+Step 1  Install project dependencies
+Step 2  Install pose extractor dependencies (4 extra backends)
+Step 3  Set dataset path
+Step 4  Validate dataset paths
+Step 5  (Optional) Pre-extract pose features for faster training
+Step 6  Train Stage 1 — Pose2Gloss
+Step 7  Train Stage 2 — Video2Pose
+Step 8  Train Stage 3 — CSLR
+Step 9  Evaluate
 ```
 
 ---
 
-## Installation
-
-### Option A — Local WSL (using `uv`)
+## Step 1 — Install Project Dependencies
 
 ```bash
-cd /path/to/OSL_SignX
-uv venv --python 3.10
-source .venv/bin/activate
-
-# Match cu121 to your CUDA version (check with: nvcc --version)
-uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-uv pip install -r requirements.txt
-uv pip install -e .
+$ cd /path/to/OSL_SignX
+$ python3 -m venv .venv
+$ source .venv/bin/activate
+$ pip install --upgrade pip
 ```
 
-### Option B — Remote GPU Server (SSH + Jupyter Lab)
+Check your CUDA version:
 
 ```bash
-cd /path/to/OSL_SignX
-python3 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-
-# Match cu121 to your CUDA version (check with: nvcc --version)
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-pip install -r requirements.txt
-pip install -e .
+$ nvcc --version
+# or
+$ nvidia-smi
 ```
 
-> Run `nvcc --version` or `nvidia-smi` to find your CUDA version.  
-> Replace `cu121` with `cu118`, `cu124`, etc. to match.
+Install PyTorch matching your CUDA version (replace `cu121` with `cu118`, `cu124`, etc.):
+
+```bash
+$ pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+```
+
+Install all project requirements:
+
+```bash
+$ pip install -r requirements.txt
+$ pip install -e .
+```
+
+`requirements.txt` installs:
+
+| Package | Purpose |
+|---|---|
+| `torch`, `torchvision` | Deep learning framework |
+| `numpy`, `scipy` | Numerical computing |
+| `decord`, `opencv-python`, `Pillow` | Video and image I/O |
+| `mediapipe` | Pose extraction backend 1 (default) |
+| `PyYAML`, `omegaconf` | Config loading |
+| `tqdm` | Progress bars |
+| `wandb` | Optional experiment tracking |
+| `editdistance`, `sacrebleu` | WER and BLEU metrics |
+| `einops`, `timm` | Model utilities (ViT backbone) |
 
 ---
 
-## Dataset Preparation
+## Step 2 — Install Pose Extractor Backends
 
-### 1. Upload the dataset to the server
+The system supports five pose modalities. **MediaPipe is already installed** via `requirements.txt`. Install the remaining four for `full5` mode (1959-dim), which matches the original SignX paper.
 
-```bash
-# From your local WSL machine:
-rsync -avz --progress \
-    "/mnt/c/Users/Admin/Desktop/SQU/Spring_26/FYP/Models/Dataset/" \
-    user@server_ip:/home/user/data/OSL_Dataset/
-```
-
-Then set `DATASET_ROOT` permanently on the server:
+### Check which backends are ready
 
 ```bash
-echo 'export DATASET_ROOT=/home/user/data/OSL_Dataset' >> ~/.bashrc
-source ~/.bashrc
+$ python3 -c "
+from signx.pose import check_full5_available
+for name, ok in check_full5_available().items():
+    print(f'  {name:12s}: {\"ready\" if ok else \"NOT installed\"}')"
 ```
 
-### 2. Validate paths
+---
+
+### Backend 2 — DWPose (whole-body 133 keypoints, 399-dim)
 
 ```bash
-bash scripts/prepare_dataset.sh
+$ pip install openmim
+$ python3 -m mim install mmengine
+$ python3 -m mim install "mmcv>=2.0.0"
+$ python3 -m mim install mmdet
+$ python3 -m mim install "mmpose>=1.0.0"
 ```
 
-### 3. Vocabulary files
-
-Already present in the repo under `data/`:
-```
-data/gloss_vocab.txt       802 lines — "0000 <blank>", "0001 مستشفى", ...
-data/Words.txt             800 lines — WordID → Arabic gloss
-data/Sentences.txt         443 lines — SentenceID → Arabic sentence text
-data/sentence_glosses.txt  164 annotated sentences for Stage 3
-```
-
-### 4. (Optional) Pre-extract pose features — ~5× faster training
-
-Run once per split before training. Avoids re-running the pose extractor every epoch:
+Verify:
 
 ```bash
-SPLIT=train bash scripts/extract_poses.sh
-SPLIT=dev   bash scripts/extract_poses.sh
+$ python3 -c "import mmpose; print('DWPose ready')"
 ```
 
-Then in `configs/default.yaml` set:
+---
+
+### Backend 3 — SMPLer-X (3-D body mesh joints, 432-dim)
+
+Clone the repo **outside** of OSL_SignX, then install:
+
+```bash
+$ cd ~
+$ git clone https://github.com/caizhongang/SMPLer-X.git
+$ cd SMPLer-X
+$ pip install -v -e .
+$ cd /path/to/OSL_SignX
+```
+
+Download the SMPL-X body model:
+1. Register at <https://smpl-x.is.tue.mpg.de/> and download `SMPLX_NEUTRAL.npz`
+2. Place it at `~/SMPLer-X/data/body_models/smplx/SMPLX_NEUTRAL.npz` (or wherever SMPLer-X expects it)
+
+Download the SMPLer-X checkpoint:
+
+```bash
+# Instructions and links are in the SMPLer-X repo README
+# After downloading, set the path:
+$ export SMPLERX_CKPT=/path/to/smplerx_checkpoint.pth.tar
+# Add to ~/.bashrc to make it permanent:
+$ echo 'export SMPLERX_CKPT=/path/to/smplerx_checkpoint.pth.tar' >> ~/.bashrc
+```
+
+Verify:
+
+```bash
+$ python3 -c "import smpler_x; print('SMPLer-X ready')"
+```
+
+---
+
+### Backend 4 — PrimeDepth / depth-pro (monocular depth features, 480-dim)
+
+```bash
+$ cd ~
+$ git clone https://github.com/apple/ml-depth-pro.git
+$ cd ml-depth-pro
+$ pip install -e .
+$ python3 -m depth_pro.cli.download_models
+$ cd /path/to/OSL_SignX
+```
+
+Verify:
+
+```bash
+$ python3 -c "import depth_pro; print('PrimeDepth ready')"
+```
+
+---
+
+### Backend 5 — Sapiens (dense body keypoints, 390-dim)
+
+```bash
+$ pip install transformers accelerate
+```
+
+Model weights (~1.2 GB) download automatically on first use.
+
+Verify:
+
+```bash
+$ python3 -c "from transformers import pipeline; print('Sapiens ready')"
+```
+
+---
+
+### Re-check all backends
+
+```bash
+$ python3 -c "
+from signx.pose import check_full5_available
+for name, ok in check_full5_available().items():
+    print(f'  {name:12s}: {\"ready\" if ok else \"NOT installed\"}')"
+```
+
+Expected output when all are installed:
+
+```
+  mediapipe   : ready
+  dwpose      : ready
+  smplerx     : ready
+  primedepth  : ready
+  sapiens     : ready
+```
+
+---
+
+### Switch pose backend
+
+Edit `configs/default.yaml`:
+
+```yaml
+pose:
+  backend: mediapipe     # single modality — 258-dim (default, lightest)
+  # backend: full5       # all 5 modalities — 1959-dim (matches paper)
+  # backend: precomputed # load pre-extracted .pt files (fastest for training)
+```
+
+When switching to `full5`, also update `pose_input_dim` in `configs/stage1_pose2gloss.yaml`:
+
+```yaml
+model:
+  pose_input_dim: 1959   # 258 for mediapipe, 1959 for full5
+```
+
+---
+
+## Step 3 — Set the Dataset Path
+
+Set `DATASET_ROOT` to the directory that contains `final_split/` and `OSL-Sentences/`:
+
+```bash
+$ export DATASET_ROOT=/home/<your_username>/FYPproject
+# Make it permanent:
+$ echo 'export DATASET_ROOT=/home/<your_username>/FYPproject' >> ~/.bashrc
+$ source ~/.bashrc
+```
+
+Verify the variable is set:
+
+```bash
+$ echo $DATASET_ROOT
+/home/<your_username>/FYPproject
+```
+
+---
+
+## Step 4 — Validate Dataset Paths
+
+```bash
+$ bash scripts/prepare_dataset.sh
+```
+
+This checks that all expected directories and at least a few video files are present.
+
+### Vocabulary files
+
+Already in the repo under `data/`:
+
+```
+data/gloss_vocab.txt         802 lines — "0000 <blank>", "0001 مستشفى", ...
+data/Words.txt               800 lines — WordID → Arabic gloss
+data/Sentences.txt           443 lines — SentenceID → Arabic sentence text
+data/sentence_glosses.txt    164 annotated sentences for Stage 3
+```
+
+---
+
+## Step 5 — (Optional) Pre-extract Pose Features
+
+Run once before training to cache pose features on disk. This avoids re-running the pose extractor every epoch and gives ~5× faster training.
+
+```bash
+$ source .venv/bin/activate
+$ export DATASET_ROOT=/home/<your_username>/FYPproject
+
+$ SPLIT=train bash scripts/extract_poses.sh
+$ SPLIT=dev   bash scripts/extract_poses.sh
+$ SPLIT=test  bash scripts/extract_poses.sh
+```
+
+Then set `backend: precomputed` in `configs/default.yaml`:
+
 ```yaml
 pose:
   backend: precomputed
@@ -194,274 +363,183 @@ pose:
 
 ---
 
-## Pose Extraction Backends
+## GPU and Memory Settings
 
-The system supports five pose extraction modalities that can be used individually or combined. The default is **MediaPipe** (easiest to install). Setting `backend: full5` uses all five concatenated (1959-dim), matching the original SignX paper.
+All configs are already tuned for a **single 24 GB GPU** with fp16 AMP enabled.
 
-| # | Backend key | Dims | What it captures | Install |
-|---|---|---|---|---|
-| 1 | `mediapipe` | 258 | Body + hand landmarks | `pip install mediapipe` |
-| 2 | `dwpose` | 399 | Whole-body 133 keypoints | `pip install openmim && mim install mmpose` |
-| 3 | `smplerx` | 432 | 3-D body mesh joints | Clone from GitHub (see below) |
-| 4 | `primedepth` | 480 | Monocular depth features | Clone from GitHub (see below) |
-| 5 | `sapiens` | 390 | Dense body keypoints | `pip install transformers accelerate` |
-| — | `full5` | **1959** | All 5 concatenated | All of the above |
-| — | `precomputed` | any | Load pre-extracted `.pt` | No extra install |
+| Stage | `batch_size` | `grad_accum_steps` | Effective batch |
+|---|---|---|---|
+| Stage 1 | 32 | 4 | 128 |
+| Stage 2 | 16 | 4 | 64 |
+| Stage 3 | 4 | 8 | 32 |
 
-### Install DWPose (modality 2)
-
-```bash
-pip install openmim
-mim install mmengine "mmcv>=2.0.0" mmdet "mmpose>=1.0.0"
-```
-
-### Install SMPLer-X (modality 3)
-
-```bash
-git clone https://github.com/caizhongang/SMPLer-X.git
-cd SMPLer-X && pip install -v -e .
-# Download SMPL-X body model from https://smpl-x.is.tue.mpg.de/
-# Download checkpoint and set: export SMPLERX_CKPT=/path/to/checkpoint.pth.tar
-```
-
-### Install PrimeDepth (modality 4)
-
-```bash
-git clone https://github.com/apple/ml-depth-pro.git
-cd ml-depth-pro && pip install -e .
-python -m depth_pro.cli.download_models
-```
-
-### Install Sapiens (modality 5)
-
-```bash
-pip install transformers accelerate
-# Model weights (~1.2 GB) download automatically on first use
-```
-
-### Check which modalities are ready
-
-```bash
-python3 -c "
-from signx.pose import check_full5_available
-for name, ok in check_full5_available().items():
-    print(f'  {name:12s}: {\"ready\" if ok else \"NOT installed\"}')"
-```
-
-### Switch backends
-
-Edit `configs/default.yaml`:
-```yaml
-pose:
-  backend: mediapipe     # single modality — 258-dim (default)
-  # backend: full5       # all 5 methods  — 1959-dim (matches paper)
-  # backend: precomputed # pre-extracted  — fastest for training
-```
-
-When switching from `mediapipe` to `full5`, also update `pose_input_dim` in `configs/stage1_pose2gloss.yaml`:
-```yaml
-model:
-  pose_input_dim: 1959   # was 258 for mediapipe
-```
-
----
-
-## Training
-
-### Step 0 — Set the dataset path
-
-**Option 1 — Environment variable (recommended):**
-```bash
-export DATASET_ROOT=/home/user/data/OSL_Dataset
-```
-
-**Option 2 — CLI flag (per-run):**
-```bash
-python -m signx.training.train_stage1 --dataset-root /home/user/data/OSL_Dataset
-```
-
-**Option 3 — Edit `configs/paths.yaml` directly:**
-```yaml
-dataset_root: /home/user/data/OSL_Dataset
-```
-
----
-
-### GPU and memory settings
-
-The default config is tuned for a **4× 24 GB GPU server**. Key settings in `configs/default.yaml`:
+Key settings already applied in `configs/default.yaml`:
 
 ```yaml
-multi_gpu: true    # DataParallel across all 4 GPUs automatically
-use_amp:   true    # fp16 mixed precision — ~2× speed, ~50% VRAM
-num_workers: 8     # 2 workers per GPU
+multi_gpu: false   # single GPU
+use_amp:   true    # fp16 — ~2× speed, ~50% VRAM
+num_workers: 4
 ```
 
-#### If you get an OOM error
+### If you still get an OOM error
 
-Work through this checklist in order — stop as soon as the error goes away:
+Work through this checklist in order — stop as soon as it clears:
 
-| Step | What to change | Where |
+| Step | Change | File |
 |---|---|---|
-| 1 | Reduce `batch_size` by half | stage config `train.batch_size` |
-| 2 | Increase `grad_accum_steps` by 2× to compensate | stage config `train.grad_accum_steps` |
+| 1 | Halve `batch_size` | stage config |
+| 2 | Double `grad_accum_steps` to keep effective batch the same | stage config |
 | 3 | Confirm `use_amp: true` | `configs/default.yaml` |
-| 4 | Confirm `multi_gpu: true` and all 4 GPUs are visible (`nvidia-smi`) | `configs/default.yaml` |
-| 5 | Reduce `video.max_frames` from 256 to 128 | `configs/default.yaml` |
-| 6 | Reduce `num_workers` to 4 or even 0 | `configs/default.yaml` |
-
-**Current batch sizes per stage** (effective batch = batch_size × grad_accum_steps):
-
-| Stage | `batch_size` | `grad_accum_steps` | Effective batch | Per GPU |
-|---|---|---|---|---|
-| Stage 1 | 128 | 1 | 128 | 32 |
-| Stage 2 | 64 | 1 | 64 | 16 |
-| Stage 3 | 16 | 2 | 32 | 4 |
-
-Batch sizes already account for 4 GPUs. If you only have 1 GPU, divide `batch_size` by 4 and set `multi_gpu: false`.
+| 4 | Reduce `video.max_frames` from 256 to 128 | `configs/default.yaml` |
+| 5 | Reduce `num_workers` to 2 or 0 | `configs/default.yaml` |
 
 ---
 
-### Stage 1 — Pose2Gloss
+## Step 6 — Train Stage 1 (Pose2Gloss)
 
-Trains the latent space from pose features. Runs on **word-level videos**.
+Trains the latent space from pose features using **word-level videos**.
 
-**Terminal / SSH:**
 ```bash
-source .venv/bin/activate
-export DATASET_ROOT=/home/user/data/OSL_Dataset
-python -m signx.training.train_stage1 --config configs/stage1_pose2gloss.yaml
+$ source .venv/bin/activate
+$ export DATASET_ROOT=/home/<your_username>/FYPproject
+$ python -m signx.training.train_stage1 --config configs/stage1_pose2gloss.yaml
 ```
 
-**Jupyter Lab cell:**
-```python
-import os, sys
-os.environ["DATASET_ROOT"] = "/home/user/data/OSL_Dataset"
-os.chdir("/path/to/OSL_SignX")   # must run from project root
+**Monitor:** `outputs/logs/stage1_pose2gloss/curves/` — PNG loss and accuracy plots saved every epoch.  
+**Checkpoint:** `outputs/checkpoints/stage1_pose2gloss/best.pt`
 
-from signx.training.train_stage1 import main
-main()
-```
+Key config (`configs/stage1_pose2gloss.yaml`):
 
-**Via unified script:**
-```bash
-bash scripts/train.sh --stage 1 --dataset-root /home/user/data/OSL_Dataset
-```
-
-**Key config** (`configs/stage1_pose2gloss.yaml`):
 ```yaml
 model:
   pose_input_dim: 258    # 258 for mediapipe / 1959 for full5
   latent_dim: 512
 train:
   epochs: 800
-  batch_size: 128        # 32 per GPU × 4 GPUs
-  grad_accum_steps: 1
+  batch_size: 32         # single 24 GB GPU; effective batch = 128
+  grad_accum_steps: 4
 data:
   level: word
 ```
 
-**Monitor:** `outputs/logs/stage1_pose2gloss/curves/` — PNG loss and accuracy plots saved every epoch.  
-**Checkpoint:** `outputs/checkpoints/stage1_pose2gloss/best.pt`
-
 ---
 
-### Stage 2 — Video2Pose
+## Step 7 — Train Stage 2 (Video2Pose)
 
-Requires Stage 1 to be complete. Freezes Stage 1 and trains a ViT to predict pose latents from raw RGB.
+Freezes Stage 1 and trains a ViT to predict pose latents from RGB frames.
 
-**Verify Stage 1 checkpoint exists first:**
+Verify Stage 1 completed first:
+
 ```bash
-ls outputs/checkpoints/stage1_pose2gloss/best.pt
+$ ls outputs/checkpoints/stage1_pose2gloss/best.pt
 ```
 
-**Terminal:**
+Then train:
+
 ```bash
-export DATASET_ROOT=/home/user/data/OSL_Dataset
-python -m signx.training.train_stage2 --config configs/stage2_video2pose.yaml
-```
-
-**Jupyter Lab cell:**
-```python
-import os
-os.environ["DATASET_ROOT"] = "/home/user/data/OSL_Dataset"
-os.chdir("/path/to/OSL_SignX")
-
-from signx.training.train_stage2 import main
-main()
-```
-
-**Key config** (`configs/stage2_video2pose.yaml`):
-```yaml
-model:
-  latent_dim: 512        # must match stage1 latent_dim
-  stage1_checkpoint: outputs/checkpoints/stage1_pose2gloss/best.pt
-train:
-  epochs: 300
-  batch_size: 64         # 16 per GPU × 4 GPUs
+$ source .venv/bin/activate
+$ export DATASET_ROOT=/home/<your_username>/FYPproject
+$ python -m signx.training.train_stage2 --config configs/stage2_video2pose.yaml
 ```
 
 **Monitor:** `outputs/logs/stage2_video2pose/curves/` — MSE curves.  
 **Checkpoint:** `outputs/checkpoints/stage2_video2pose/best.pt`
 
----
+Key config (`configs/stage2_video2pose.yaml`):
 
-### Stage 3 — Continuous Recognition (CSLR)
-
-Requires Stage 2 to be complete. Trains on **sentence-level videos** using CTC + CE + knowledge distillation.
-
-**Verify Stage 2 checkpoint exists first:**
-```bash
-ls outputs/checkpoints/stage2_video2pose/best.pt
-```
-
-**Terminal:**
-```bash
-export DATASET_ROOT=/home/user/data/OSL_Dataset
-python -m signx.training.train_stage3 --config configs/stage3_cslr.yaml
-```
-
-**Jupyter Lab cell:**
-```python
-import os
-os.environ["DATASET_ROOT"] = "/home/user/data/OSL_Dataset"
-os.chdir("/path/to/OSL_SignX")
-
-from signx.training.train_stage3 import main
-main()
-```
-
-**Key config** (`configs/stage3_cslr.yaml`):
 ```yaml
 model:
-  latent_dim: 512        # must match stage1/stage2 latent_dim
-  stage2_checkpoint: outputs/checkpoints/stage2_video2pose/best.pt
+  latent_dim: 512        # must match stage1
+  stage1_checkpoint: outputs/checkpoints/stage1_pose2gloss/best.pt
 train:
-  epochs: 100            # 132 training sentences — converges fast
-  batch_size: 16         # 4 per GPU × 4 GPUs
-  grad_accum_steps: 2    # effective batch = 32
-data:
-  level: sentence
+  epochs: 300
+  batch_size: 16         # single 24 GB GPU; effective batch = 64
+  grad_accum_steps: 4
+```
+
+---
+
+## Step 8 — Train Stage 3 (CSLR)
+
+Trains continuous recognition on **sentence-level videos** using CTC + CE + knowledge distillation.
+
+Verify Stage 2 completed first:
+
+```bash
+$ ls outputs/checkpoints/stage2_video2pose/best.pt
+```
+
+Then train:
+
+```bash
+$ source .venv/bin/activate
+$ export DATASET_ROOT=/home/<your_username>/FYPproject
+$ python -m signx.training.train_stage3 --config configs/stage3_cslr.yaml
 ```
 
 **Monitor:** `outputs/logs/stage3_cslr/curves/` — WER curves.  
 **Checkpoint:** `outputs/checkpoints/stage3_cslr/best.pt`
 
-> **Note:** `data/sentence_glosses.txt` contains 164 annotated sentences (132 train / 16 dev / 16 test). Stage 3 trains on these only.
+Key config (`configs/stage3_cslr.yaml`):
+
+```yaml
+model:
+  latent_dim: 512        # must match stage1/stage2
+  stage2_checkpoint: outputs/checkpoints/stage2_video2pose/best.pt
+train:
+  epochs: 100
+  batch_size: 4          # single 24 GB GPU; effective batch = 32
+  grad_accum_steps: 8
+data:
+  level: sentence
+```
+
+> **Note:** `data/sentence_glosses.txt` has 164 annotated sentences (132 train / 16 dev / 16 test). Stage 3 converges in ~50–80 epochs.
 
 ---
 
-### Run all three stages sequentially
+## Run All Three Stages Sequentially
 
 ```bash
-bash scripts/train.sh --dataset-root /home/user/data/OSL_Dataset
+$ bash scripts/train.sh --dataset-root /home/<your_username>/FYPproject
 ```
 
 ---
 
-## Training Curves and Visualization
+## Step 9 — Evaluate
 
-Training curves are saved automatically as PNG files after every epoch — **no W&B account needed**:
+```bash
+$ source .venv/bin/activate
+$ export DATASET_ROOT=/home/<your_username>/FYPproject
+$ python -m signx.inference.evaluate \
+    --dataset-root $DATASET_ROOT \
+    --stage2-checkpoint outputs/checkpoints/stage2_video2pose/best.pt \
+    --stage3-checkpoint outputs/checkpoints/stage3_cslr/best.pt \
+    --split test \
+    --output outputs/eval_results.json
+```
+
+Or via the convenience script:
+
+```bash
+$ bash scripts/evaluate.sh \
+    --stage2-checkpoint outputs/checkpoints/stage2_video2pose/best.pt \
+    --stage3-checkpoint outputs/checkpoints/stage3_cslr/best.pt
+```
+
+### Metrics
+
+| Metric | Description |
+|---|---|
+| **WER** | Word Error Rate (Levenshtein / reference length). Lower is better. |
+| **BLEU** | Corpus-level BLEU-4 (sacrebleu). Higher is better. |
+| **P-I Accuracy** | Position-Independent token match rate. Higher is better. |
+
+---
+
+## Training Curves
+
+Saved automatically as PNG files after every epoch — no W&B account needed:
 
 ```
 outputs/logs/
@@ -480,12 +558,12 @@ outputs/logs/
         └── stage3_cslr_loss.png
 ```
 
-### Stage 1 Report Figures
+### Stage 1 Report Visualizations
 
-After Stage 1 training completes, generate visualizations for your report:
+After Stage 1 completes:
 
 ```bash
-python -m signx.inference.visualize_stage1 \
+$ python -m signx.inference.visualize_stage1 \
     --checkpoint outputs/checkpoints/stage1_pose2gloss/best.pt \
     --config    configs/stage1_pose2gloss.yaml \
     --n-samples 5 \
@@ -503,14 +581,16 @@ Figures saved to `outputs/visualizations/stage1/`:
 | `method_comparison.png` | P-I accuracy bar chart across pose backends |
 
 To generate the method comparison chart after running all backends:
+
 ```bash
-python -m signx.inference.visualize_stage1 \
+$ python -m signx.inference.visualize_stage1 \
     --method-results mediapipe=0.72 dwpose=0.75 smplerx=0.78 primedepth=0.69 sapiens=0.76 full5=0.82
 ```
 
 ### Enabling Weights & Biases (optional)
 
 In `configs/default.yaml`:
+
 ```yaml
 logging:
   wandb_enabled: true
@@ -519,45 +599,17 @@ logging:
 ```
 
 Log in once on the server:
-```bash
-wandb login
-```
-
----
-
-## Evaluation
 
 ```bash
-export DATASET_ROOT=/home/user/data/OSL_Dataset
-bash scripts/evaluate.sh \
-    --stage2-checkpoint outputs/checkpoints/stage2_video2pose/best.pt \
-    --stage3-checkpoint outputs/checkpoints/stage3_cslr/best.pt
+$ wandb login
 ```
-
-Or directly:
-```bash
-python -m signx.inference.evaluate \
-    --dataset-root /home/user/data/OSL_Dataset \
-    --stage2-checkpoint outputs/checkpoints/stage2_video2pose/best.pt \
-    --stage3-checkpoint outputs/checkpoints/stage3_cslr/best.pt \
-    --split test \
-    --output outputs/eval_results.json
-```
-
-### Metrics
-
-| Metric | Description |
-|---|---|
-| **WER** | Word Error Rate (Levenshtein / reference length). Lower is better. |
-| **BLEU** | Corpus-level BLEU-4 (sacrebleu). Higher is better. |
-| **P-I Accuracy** | Position-Independent token match rate. Higher is better. |
 
 ---
 
 ## Inference on a Single Video
 
 ```bash
-python -m signx.inference.predict \
+$ python -m signx.inference.predict \
     --video path/to/video.mp4 \
     --stage2-checkpoint outputs/checkpoints/stage2_video2pose/best.pt \
     --stage3-checkpoint outputs/checkpoints/stage3_cslr/best.pt \
@@ -569,36 +621,33 @@ python -m signx.inference.predict \
 
 ## Configuration Reference
 
-All configs are in `configs/`. They use OmegaConf with a `defaults:` chain:
+All configs live in `configs/`. They use OmegaConf with a `defaults:` chain:
 
 ```
 stage3_cslr.yaml → default.yaml → paths.yaml
 ```
-
-### Key options
 
 | Config key | File | Description |
 |---|---|---|
 | `dataset_root` | `paths.yaml` | Dataset root — override with `DATASET_ROOT` env var |
 | `pose.backend` | `default.yaml` | `mediapipe` / `full5` / `precomputed` |
 | `pose.full_dim` | `default.yaml` | 1959 (MediaPipe 258 + DWPose 399 + SMPLerX 432 + PrimeDepth 480 + Sapiens 390) |
-| `model.latent_dim` | stage configs | Latent space size — must match across all 3 stages (default: 512) |
+| `model.latent_dim` | stage configs | Must match across all 3 stages (default: 512) |
 | `model.pose_input_dim` | `stage1_pose2gloss.yaml` | 258 for mediapipe, 1959 for full5 |
-| `train.batch_size` | stage configs | Per-run batch size (splits across GPUs automatically) |
+| `train.batch_size` | stage configs | Per-run batch size |
 | `train.grad_accum_steps` | stage configs | Gradient accumulation |
-| `multi_gpu` | `default.yaml` | `true` = DataParallel across all visible GPUs |
-| `use_amp` | `default.yaml` | `true` = fp16 mixed precision |
-| `num_workers` | `default.yaml` | DataLoader workers (8 for server, 0 for debugging) |
+| `multi_gpu` | `default.yaml` | false = single GPU |
+| `use_amp` | `default.yaml` | true = fp16 mixed precision |
+| `num_workers` | `default.yaml` | DataLoader workers |
 | `logging.wandb_enabled` | `default.yaml` | Enable W&B logging |
-| `checkpoint.save_top_k` | `default.yaml` | Number of best checkpoints to keep |
 
 ---
 
 ## Running Tests
 
 ```bash
-source .venv/bin/activate
-pytest tests/ -v
+$ source .venv/bin/activate
+$ pytest tests/ -v
 ```
 
 All 25 tests use random dummy data — no dataset or GPU required.
@@ -607,13 +656,13 @@ All 25 tests use random dummy data — no dataset or GPU required.
 
 ## Known Limitations
 
-1. **SMPLer-X and PrimeDepth require manual installation** from GitHub. DWPose requires MMPose. Sapiens and MediaPipe are pip-installable. See the Pose Extraction Backends section for per-modality instructions.
+1. **SMPLer-X and PrimeDepth require manual installation** from GitHub. DWPose requires MMPose (via `openmim`). Sapiens and MediaPipe are pip-installable.
 
-2. **Dataset I/O over WSL**: Reading from the Windows filesystem (`/mnt/c/...`) is slow. Pre-extracting pose features to the Linux filesystem with `extract_poses.sh` and switching to `backend: precomputed` helps significantly. On the server this is not an issue.
+2. **Stage 3 sentence dataset is small**: Only 164 annotated sentences (132 train). Watch `val/wer` curves — stop early if validation WER stops improving after ~80 epochs.
 
-3. **Stage 3 sentence dataset is small**: Only 164 annotated sentences (132 train). The model converges in ~50–80 epochs. Watch `val/wer` curves — stop early if validation WER stops improving.
+3. **`latent_dim` must be consistent**: All three stage configs must use the same `model.latent_dim`. The default is 512. If you change it, update all three configs and retrain from Stage 1.
 
-4. **`latent_dim` must be consistent**: All three stage configs must use the same `model.latent_dim`. The default is 512. If you change it, update all three stage configs and retrain from Stage 1.
+4. **Sentence split**: The sentence videos in `OSL-Sentences/OSL-Sentences/rgb_format/` are not pre-split. The code assigns them to train/dev/test by signer ID automatically. Once you have a manual split, place folders under `OSL-Sentences/` following the same `{train,dev,test}/rgb/` layout as `final_split/` and update `sentence_dir` in `configs/paths.yaml`.
 
 ---
 

@@ -25,8 +25,8 @@ loss:
 
 train:
   epochs: 800
-  batch_size: 128          # 32 per GPU × 4 GPUs; effective batch = 128 (unchanged)
-  grad_accum_steps: 1      # was 4 — accum no longer needed, 4× faster per step
+  batch_size: 32           # single 24 GB GPU; effective batch = 128 via grad_accum
+  grad_accum_steps: 4      # effective batch = 32 × 4 = 128
   optimizer: adamw
   lr: 1.0e-3               # effective batch unchanged → lr unchanged
   weight_decay: 0.01

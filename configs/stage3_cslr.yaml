@@ -44,8 +44,8 @@ loss:
 
 train:
   epochs: 100              # 132 sentences overfit quickly; was 200
-  batch_size: 16           # 4 per GPU × 4 GPUs; sentence videos are long
-  grad_accum_steps: 2      # effective batch = 32 (unchanged) — 2× faster per epoch
+  batch_size: 4            # single 24 GB GPU; sentence videos are long
+  grad_accum_steps: 8      # effective batch = 4 × 8 = 32
   optimizer: adamw
   scheduler: noam
   noam_warmup: 2000        # halved — fewer training samples, fewer steps total

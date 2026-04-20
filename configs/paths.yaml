@@ -2,15 +2,16 @@
 # All downstream configs inherit these paths via OmegaConf interpolation.
 
 # Set the DATASET_ROOT environment variable to override this path.
-# On the remote server:  export DATASET_ROOT=/path/to/dataset
-# On WSL (local):        default below is used automatically
-dataset_root: ${oc.env:DATASET_ROOT,/mnt/c/Users/Admin/Desktop/SQU/Spring_26/FYP/Models/Dataset}
+# On the server: export DATASET_ROOT=/home/<user>/FYPproject
+dataset_root: ${oc.env:DATASET_ROOT,/home/user/FYPproject}
 
 # Word-level split (train / dev / test) — already signer-aware split
+# Layout: final_split/{train,dev,test}/rgb/*.mp4
 word_split_dir: ${dataset_root}/final_split
 
-# Sentence-level videos (not yet split)
-sentence_dir: ${dataset_root}/dataset/OSL-Sentences/rgb_format
+# Sentence-level videos (not yet split by signer)
+# Layout: OSL-Sentences/OSL-Sentences/rgb_format/*.mp4
+sentence_dir: ${dataset_root}/OSL-Sentences/OSL-Sentences/rgb_format
 
 # Vocabulary and gloss annotation files (kept in repo)
 vocab_file: data/gloss_vocab.txt

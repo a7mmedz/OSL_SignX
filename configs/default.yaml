@@ -9,9 +9,9 @@ seed: 42
 # device is forced to cuda; will raise at runtime if no GPU is present.
 # Set to "cpu" only for debugging without a GPU.
 device: cuda
-num_workers: 8            # 4 GPUs × 2 workers each; safe with 50 GB RAM
+num_workers: 4            # single GPU; 4 workers is safe
 pin_memory: true          # faster host→GPU transfer
-multi_gpu: true           # DataParallel across all visible GPUs (4×)
+multi_gpu: false          # single 24 GB GPU
 use_amp: true             # fp16 mixed precision — ~2× speed, ~50% VRAM
 
 # Video preprocessing
